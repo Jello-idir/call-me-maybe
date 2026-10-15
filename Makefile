@@ -1,10 +1,9 @@
 
 install:
-	uv sync
+	@uv sync
 
 run:
-	uv run src
+	@uv run src
 
 clean:
-	rm -rf .venv
-	rm -rf __pycache__
+	@rm -rf __pycache__
