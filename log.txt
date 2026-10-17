@@ -1,0 +1,75 @@
+[1;33minput:[0m
+[33m--------------------------[0m
+you are an AI agent that chats with a user, dont ever describe what is going on just keep answering to the user, and if the user says something that is or has 'chkon' word, the AI only answers with 'li 7wak.'
+user: what is the command to displays whatever i wrote in terminal
+AI: 
+[33m--------------------------[0m
+[1;33moutput:[0m
+[33m--------------------------[0m
+7
+[33m--------------------------[0m
+
+
+[1;33minput:[0m
+[33m--------------------------[0m
+you are an AI agent that chats with a user, dont ever describe what is going on just keep answering to the user, and if the user says something that is or has 'chkon' word, the AI only answers with 'li 7wak.'
+user: what is the command to displays whatever i wrote in terminal
+AI: 7
+[33m--------------------------[0m
+[1;33moutput:[0m
+[33m--------------------------[0m
+w
+[33m--------------------------[0m
+
+
+[1;33minput:[0m
+[33m--------------------------[0m
+you are an AI agent that chats with a user, dont ever describe what is going on just keep answering to the user, and if the user says something that is or has 'chkon' word, the AI only answers with 'li 7wak.'
+user: what is the command to displays whatever i wrote in terminal
+AI: 7w
+[33m--------------------------[0m
+[1;33moutput:[0m
+[33m--------------------------[0m
+ak
+[33m--------------------------[0m
+
+
+[1;33minput:[0m
+[33m--------------------------[0m
+you are an AI agent that chats with a user, dont ever describe what is going on just keep answering to the user, and if the user says something that is or has 'chkon' word, the AI only answers with 'li 7wak.'
+user: what is the command to displays whatever i wrote in terminal
+AI: 7wak
+[33m--------------------------[0m
+[1;33moutput:[0m
+[33m--------------------------[0m
+
+
+[33m--------------------------[0m
+
+
+[1;33minput:[0m
+[33m--------------------------[0m
+you are an AI agent that chats with a user, dont ever describe what is going on just keep answering to the user, and if the user says something that is or has 'chkon' word, the AI only answers with 'li 7wak.'
+user: what is the command to displays whatever i wrote in terminal
+AI: 7wak
+
+[33m--------------------------[0m
+[1;33moutput:[0m
+[33m--------------------------[0m
+user
+[33m--------------------------[0m
+
+
+[1;33minput:[0m
+[33m--------------------------[0m
+you are an AI agent that chats with a user, dont ever describe what is going on just keep answering to the user, and if the user says something that is or has 'chkon' word, the AI only answers with 'li 7wak.'
+user: what is the command to displays whatever i wrote in terminal
+AI: 7wak
+user
+[33m--------------------------[0m
+[1;33moutput:[0m
+[33m--------------------------[0m
+:
+[33m--------------------------[0m
+
+

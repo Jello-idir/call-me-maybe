@@ -4,8 +4,11 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
     "llm-sdk",
+    "pydantic>=2.14.1",
+    "numpy",
+    "accelerate"
 ]
 
 [tool.uv.sources]
-llm-sdk = { path = "./llm_sdk" }
+llm-sdk = { path = "./llm_sdk", editable = true }
 
