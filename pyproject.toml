@@ -10,5 +10,5 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-llm-sdk = { path = "./llm_sdk", editable = true }
+llm-sdk = { path = "./llm_sdk"}
 

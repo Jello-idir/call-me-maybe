@@ -1,3 +1,5 @@
+"""Provide the supplied SDK for local language-model inference."""
+
 # ABOUTME: LLM SDK for local model inference using Hugging Face transformers.
 # ABOUTME: Provides Small_LLM_Model class for loading and running causal language models.
 
@@ -14,19 +16,7 @@ logging.set_verbosity_error()  # keep the console clean
 
 
 class Small_LLM_Model:
-    """Utility class wrapping a lightweight Hugging Face causal-LM for fast, low-memory experimentation.
-
-    Parameters
-    ----------
-    model_name: str, default="Qwen/Qwen3-0.6B"
-        Identifier of the model on the HF Hub.
-    device: str | None, default=None
-        Computation device. If *None* we automatically select ``mps`` when available on macOS,
-        ``cuda`` when available, otherwise we fall back to ``cpu``.
-    dtype: torch.dtype | None, default=None
-        Numerical precision. When using a GPU or MPS we default to ``float16`` to keep memory
-        usage reasonable; on CPU we keep ``float32`` for maximum compatibility.
-    """
+    """Wrap a causal language model for token encoding and next-token scores."""
 
     def __init__(
         self,
@@ -36,6 +26,15 @@ class Small_LLM_Model:
         dtype: torch.dtype | None = None,
         trust_remote_code: bool = True,
     ) -> None:
+        """Load the tokenizer and model, then configure inference.
+
+        Args:
+            model_name: Hugging Face model ID; defaults to Qwen/Qwen3-0.6B.
+            device: Device name, or None to prefer MPS, then CUDA, then CPU.
+            dtype: Weight precision, or None for float16 on MPS/CUDA and
+                float32 on CPU.
+            trust_remote_code: Whether to allow the model's custom code.
+        """
         self._model_name = model_name
 
         # Auto-select device with priority: mps > cuda > cpu
@@ -75,21 +74,40 @@ class Small_LLM_Model:
 
 
     def encode(self, text: str) -> torch.Tensor:
-        """Tokenise *text* and return a 2-D ``input_ids`` tensor on the target device."""
+        """Encode text without adding special tokens.
+
+        Args:
+            text: Text to tokenize.
+
+        Returns:
+            A tensor of shape (1, token_count) on the model's device.
+        """
         ids = self._tokenizer.encode(text, add_special_tokens=False)
         return torch.tensor([ids], device=self._device, dtype=torch.long)
 
 
     def decode(self, ids: torch.Tensor | list[int]) -> str:
-        """Inverse of :py:meth:`encode`. Removes special tokens."""
+        """Decode one token sequence while removing special tokens.
+
+        Args:
+            ids: A one-dimensional tensor or list of token IDs.
+
+        Returns:
+            Decoded text without special tokens.
+        """
         if isinstance(ids, torch.Tensor):
             ids = ids.tolist()
         return self._tokenizer.decode(ids, skip_special_tokens=True)
 
 
     def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
-        """
-        Given a list of input token ids, return the raw logits (no softmax) for the next token.
+        """Score every possible next token for a context.
+
+        Args:
+            input_ids: Context token IDs to pass to the model.
+
+        Returns:
+            Raw next-token scores indexed by token ID, without softmax.
         """
         input_tensor = torch.tensor([input_ids], device=self._device, dtype=torch.long)
         with torch.no_grad():
@@ -100,6 +118,11 @@ class Small_LLM_Model:
 
 
     def get_path_to_vocab_file(self) -> str:
+        """Find or download the model's vocabulary file.
+
+        Returns:
+            Local path to the vocabulary JSON file.
+        """
         vocab_file_name = self._tokenizer.vocab_files_names.get('vocab_file', "vocab.json")
         vocab_path = hf_hub_download(
             repo_id=self._model_name,
@@ -109,6 +132,11 @@ class Small_LLM_Model:
 
 
     def get_path_to_merges_file(self) -> str:
+        """Find or download the model's tokenizer merges file.
+
+        Returns:
+            Local path to the merges text file.
+        """
         merges_file_name = self._tokenizer.vocab_files_names.get('merges_file', "merges.txt")
         merges_path = hf_hub_download(
             repo_id=self._model_name,
@@ -118,6 +146,11 @@ class Small_LLM_Model:
 
 
     def get_path_to_tokenizer_file(self) -> str:
+        """Find or download the model's tokenizer definition.
+
+        Returns:
+            Local path to the tokenizer JSON file.
+        """
         tokenizer_file_name = self._tokenizer.vocab_files_names.get('tokenizer_file', "tokenizer.json")
         tokenizer_path = hf_hub_download(
             repo_id=self._model_name,

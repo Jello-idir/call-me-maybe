@@ -8,7 +8,7 @@ import torch
 
 
 class Small_LLM_Model:
-    """Load a Hugging Face causal language model and access its tokenizer and logits."""
+    """Wrap a causal language model for token encoding and next-token scores."""
 
     def __init__(
         self,
@@ -18,29 +18,70 @@ class Small_LLM_Model:
         dtype: torch.dtype | None = None,
         trust_remote_code: bool = True,
     ) -> None:
-        """Load the model, automatically choosing the device and dtype when omitted."""
+        """Load the tokenizer and model, then configure inference.
+
+        Args:
+            model_name: Hugging Face model ID; defaults to Qwen/Qwen3-0.6B.
+            device: Device name, or None to prefer MPS, then CUDA, then CPU.
+            dtype: Weight precision, or None for float16 on MPS/CUDA and
+                float32 on CPU.
+            trust_remote_code: Whether to allow the model's custom code.
+        """
         ...
 
     def encode(self, text: str) -> torch.Tensor:
-        """Tokenize text into a 2-D tensor of token IDs on the model's device."""
+        """Encode text without adding special tokens.
+
+        Args:
+            text: Text to tokenize.
+
+        Returns:
+            A tensor of shape (1, token_count) on the model's device.
+        """
         ...
 
     def decode(self, ids: torch.Tensor | list[int]) -> str:
-        """Convert token IDs to text, removing special tokens."""
+        """Decode one token sequence while removing special tokens.
+
+        Args:
+            ids: A one-dimensional tensor or list of token IDs.
+
+        Returns:
+            Decoded text without special tokens.
+        """
         ...
 
     def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
-        """Return raw scores for each possible next token, without applying softmax."""
+        """Score every possible next token for a context.
+
+        Args:
+            input_ids: Context token IDs to pass to the model.
+
+        Returns:
+            Raw next-token scores indexed by token ID, without softmax.
+        """
         ...
 
     def get_path_to_vocab_file(self) -> str:
-        """Return the local vocabulary file path, downloading the file if needed."""
+        """Find or download the model's vocabulary file.
+
+        Returns:
+            Local path to the vocabulary JSON file.
+        """
         ...
 
     def get_path_to_merges_file(self) -> str:
-        """Return the local tokenizer merges file path, downloading it if needed."""
+        """Find or download the model's tokenizer merges file.
+
+        Returns:
+            Local path to the merges text file.
+        """
         ...
 
     def get_path_to_tokenizer_file(self) -> str:
-        """Return the local tokenizer JSON file path, downloading it if needed."""
+        """Find or download the model's tokenizer definition.
+
+        Returns:
+            Local path to the tokenizer JSON file.
+        """
         ...
