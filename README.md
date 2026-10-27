@@ -120,8 +120,19 @@ and `--visualize` argument, then delete `src/visualization.py`. The cache's
 ## Design decisions
 
 Use the SDK's public methods, Python's JSON parser, and explicit JSON structure.
-Supported values are strings, finite numbers, and booleans. Generation ends at
-a valid separator, with no fixed token limit.
+Supported types are `string`, `number`, `integer`, `float`, and `boolean`.
+Numbers and floats must be finite. Generation ends at a valid separator,
+with no fixed token limit.
+
+Use `"type": "integer"` in a parameter or return definition for integers.
+Integer arguments are generated as values such as `0`, `42`, or `-7`.
+Decimal points, exponent notation, quoted numbers, and booleans are rejected
+for this type. `"number"` continues to accept both integers and decimals.
+
+The subject uses `"number"` for decimal values. As an additional supported
+label, `"type": "float"` requires a decimal point or exponent, such as `3.0`,
+`-2.5`, or `1e2`. Bare integers, booleans, quoted numbers, `NaN`, and infinity
+are rejected for this type. It works in parameter and return definitions.
 
 All application data classes use Pydantic for validation. Token constants are
 plain dictionaries. Empty function lists, duplicate function names, unsupported
@@ -146,6 +157,15 @@ Before submission, 17 temporary tests checked input validation, error handling,
 typed values, Unicode and escaping, overlapping and custom names, functions
 without parameters, cache reuse, visualization, and output files. All passed.
 These checks are kept outside the repository, as requested by the subject.
+
+Integer support was also checked with negative, zero, and large values,
+including rejection of decimals and booleans. Two real-model prompts using
+integer definitions produced the expected integer arguments.
+
+Float checks cover unfinished prefixes, decimal and exponent notation,
+negative zero, and rejection of wrong types and non-finite values. Two
+real-model prompts produced the expected float arguments, including `2.0`
+and `0.0` for whole-number inputs declared as floats.
 
 The caching demo was checked with the local Qwen3-0.6B model: three output
 entries, two generation calls, correct arguments, and matching repeated results.
@@ -195,4 +215,5 @@ more time. All 17 temporary checks, flake8, and strict mypy passed.
 
 AI assistance was used to **HELP** in constrained decoding, JSON validation,
 prompt caching, and was used to **DO** this README, docstrings, generation
-visualization, automated checks, the models file move, and submission fixes.
+visualization, integer and float support, automated checks, the models file
+move, and submission fixes.
