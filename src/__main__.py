@@ -1,12 +1,15 @@
 """Generate JSON function calls from prompts using constrained decoding."""
 
 from llm_sdk import Small_LLM_Model
-from models import ChatTokenIds, ControlToken, FnType, Function, Prompt, Roles, t_token_ids
+from src.models import (
+    ChatTokenIds, CONTROL_IDS, FnType, Function, Prompt, ROLE_IDS, t_token_ids,
+)
 import json
 import sys
 import numpy as np
 import argparse
 from pathlib import Path
+from src import visualization
 
 
 def write_error(notice: str, message: str) -> None:
@@ -34,7 +37,7 @@ def load_file(filename: str) -> str:
     """
 
     try:
-        with open(filename) as f:
+        with open(filename, encoding="utf-8") as f:
             data = f.read()
     except FileNotFoundError:
         raise ValueError(f"File not found: {filename}")
@@ -43,7 +46,7 @@ def load_file(filename: str) -> str:
     return data
 
 
-def format_token_ids_mssg(chats: list[ChatTokenIds]) -> t_token_ids:
+def format_token_ids_mssg(chats: list[dict[str, t_token_ids]]) -> t_token_ids:
     """Wrap tokenized messages in Qwen's chat markers.
 
     Args:
@@ -53,34 +56,19 @@ def format_token_ids_mssg(chats: list[ChatTokenIds]) -> t_token_ids:
         One token sequence containing all messages and their markers.
 
     Raises:
-        ValueError: A message has invalid keys or token IDs.
+        pydantic.ValidationError: A message has invalid keys or token IDs.
     """
 
     result: list[int] = []
 
     for chat in chats:
-
-        if not isinstance(chat, dict) or len(chat) != 2:
-            raise ValueError("Each message must be a dict with 'role' and 'content' keys.")
-
-        if "role" not in chat or "content" not in chat:
-            raise ValueError("Each message must have 'role' and 'content' keys.")
-
-        if not isinstance(chat["role"], list) or not isinstance(chat["content"], list):
-            raise ValueError("Both 'role' and 'content' must be lists of token IDs.")
-
-        if not all(isinstance(i, int) for i in chat["role"]):
-            raise ValueError("'role' must be a list of integers.")
-
-        if not all(isinstance(i, int) for i in chat["content"]):
-            raise ValueError("'content' must be a list of integers.")
-
-        result.extend(ControlToken.START.ids())
-        result.extend(chat["role"])
-        result.extend(ControlToken.NL.ids())
-        result.extend(chat["content"])
-        result.extend(ControlToken.END.ids())
-        result.extend(ControlToken.NL.ids())
+        message = ChatTokenIds.model_validate(chat)
+        result.extend(CONTROL_IDS["start"])
+        result.extend(message.role)
+        result.extend(CONTROL_IDS["newline"])
+        result.extend(message.content)
+        result.extend(CONTROL_IDS["end"])
+        result.extend(CONTROL_IDS["newline"])
 
     return result
 
@@ -92,18 +80,18 @@ def prefix_assistant_token_ids() -> t_token_ids:
         Token IDs that start the assistant's final answer.
     """
     return (
-        ControlToken.START.ids()
-        + Roles.ASSISTANT.ids()
-        + ControlToken.NL.ids()
-        + ControlToken.THINK.ids()
-        + ControlToken.DOUBLE_NL.ids()
-        + ControlToken.END_THINK.ids()
-        + ControlToken.DOUBLE_NL.ids()
+        CONTROL_IDS["start"]
+        + ROLE_IDS["assistant"]
+        + CONTROL_IDS["newline"]
+        + CONTROL_IDS["think"]
+        + CONTROL_IDS["double_newline"]
+        + CONTROL_IDS["end_think"]
+        + CONTROL_IDS["double_newline"]
     )
 
 
 def init_arg_parser() -> argparse.Namespace:
-    """Parse the input, function-definition, and output paths.
+    """Parse file paths and the optional visualization flag.
 
     Returns:
         Parsed command-line options, including their default paths.
@@ -113,7 +101,7 @@ def init_arg_parser() -> argparse.Namespace:
     """
 
     arg_parser = argparse.ArgumentParser(
-        description="To Do."
+        description="Convert prompts into JSON function calls."
     )
 
     arg_parser.add_argument(
@@ -140,6 +128,12 @@ def init_arg_parser() -> argparse.Namespace:
         default="data/output/function_calls.json",
     )
 
+    arg_parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Show generation steps in the terminal (on standard error).",
+    )
+
     return arg_parser.parse_args()
 
 
@@ -156,10 +150,9 @@ def load_prompts(filename: str) -> list[Prompt]:
         OSError: The file cannot be opened or read.
         json.JSONDecodeError: The file contains invalid JSON.
         ValueError: The JSON root is not a list.
-        TypeError: A list entry is not an object.
         pydantic.ValidationError: A prompt does not match its schema.
     """
-    with open(filename) as f:
+    with open(filename, encoding="utf-8") as f:
         j = json.load(f)
 
     if not isinstance(j, list):
@@ -167,7 +160,7 @@ def load_prompts(filename: str) -> list[Prompt]:
 
     prompts: list[Prompt] = []
     for prompt in j:
-        prompts.append(Prompt(**prompt))
+        prompts.append(Prompt.model_validate(prompt))
 
     return prompts
 
@@ -184,19 +177,23 @@ def load_functions(filename: str) -> list[Function]:
     Raises:
         OSError: The file cannot be opened or read.
         json.JSONDecodeError: The file contains invalid JSON.
-        ValueError: The JSON root is not a list.
-        TypeError: A list entry is not an object.
+        ValueError: The JSON root is not a non-empty list, or names repeat.
         pydantic.ValidationError: A function does not match its schema.
     """
-    with open(filename) as f:
+    with open(filename, encoding="utf-8") as f:
         j = json.load(f)
 
-    if not isinstance(j, list):
-        raise ValueError("Input JSON must be a list of functions.")
+    if not isinstance(j, list) or not j:
+        raise ValueError("Input JSON must be a non-empty list of functions.")
 
     functions: list[Function] = []
+    names: set[str] = set()
     for func in j:
-        functions.append(Function(**func))
+        function = Function.model_validate(func)
+        if function.name in names:
+            raise ValueError(f"Duplicate function name: {function.name}")
+        names.add(function.name)
+        functions.append(function)
 
     return functions
 
@@ -221,7 +218,7 @@ def generate_allowed_tokens(
     """
 
     if not allowed_sequences or any(not ids for ids in allowed_sequences):
-        raise ValueError("Expected at least one non-empty allowed token sequence")
+        raise ValueError("Expected non-empty allowed token sequences")
 
     generated_ids: t_token_ids = []
 
@@ -233,15 +230,26 @@ def generate_allowed_tokens(
             if len(ids) > position and ids[:position] == generated_ids
         })
         if not allowed_next_ids:
-            raise ValueError("No allowed sequence matches the generated token prefix")
+            raise ValueError("No allowed sequence matches the token prefix")
 
-        logits = llm.get_logits_from_input_ids(serialized_prompt + generated_ids)
-        next_token = max(allowed_next_ids, key=lambda token_id: logits[token_id])
-
-        if not np.isfinite(logits[next_token]):
-            raise ValueError("No valid next token has a finite score")
+        # A forced token needs no prediction; ask the model only for choices.
+        if len(allowed_next_ids) == 1:
+            next_token = allowed_next_ids[0]
+        else:
+            logits = llm.get_logits_from_input_ids(
+                serialized_prompt + generated_ids
+            )
+            allowed_next_ids = [
+                token for token in allowed_next_ids
+                if np.isfinite(logits[token])
+            ]
+            if not allowed_next_ids:
+                raise ValueError("No valid next token has a finite score")
+            next_token = max(allowed_next_ids, key=lambda token: logits[token])
 
         generated_ids.append(next_token)
+        if visualization.enabled:
+            visualization.show("Name", llm.decode(generated_ids))
         if generated_ids in allowed_sequences:
             return generated_ids
 
@@ -373,7 +381,9 @@ def generate_value(
     generated_value: t_token_ids = []
 
     while True:
-        logits = llm.get_logits_from_input_ids(serialized_prompt + generated_value)
+        logits = llm.get_logits_from_input_ids(
+            serialized_prompt + generated_value
+        )
         for token_id in np.argsort(logits)[::-1]:
             token_id = int(token_id)
             if not np.isfinite(logits[token_id]) or not llm.decode([token_id]):
@@ -387,11 +397,13 @@ def generate_value(
                 continue
 
             generated_value.append(token_id)
+            visualization.show("Value", text)
             if end is not None:
-                return llm.encode(text[:end + 1])[0].tolist()
+                value_ids: t_token_ids = llm.encode(text[:end + 1])[0].tolist()
+                return value_ids
             break
         else:
-            raise ValueError(f"No valid next token for a JSON {value_type} value")
+            raise ValueError(f"No valid next token for JSON {value_type}")
 
 
 def generate_parameters(
@@ -413,7 +425,7 @@ def generate_parameters(
     """
 
     parameter_ids = {
-        name: llm.encode(json.dumps(name) + ": ")[0].tolist()
+        name: llm.encode(json.dumps(name) + ":")[0].tolist()
         for name in allowed_parameters
     }
     needed_parameters = list(parameter_ids.values())
@@ -432,7 +444,12 @@ def generate_parameters(
         needed_parameters.remove(generated_param)
         generated_parameters.extend(generated_param)
         parameter_name = next(
-            name for name, ids in parameter_ids.items() if ids == generated_param
+            name for name, ids in parameter_ids.items()
+            if ids == generated_param
+        )
+        visualization.show(
+            "Parameter",
+            f"{parameter_name} ({allowed_parameters[parameter_name].type})",
         )
         generated_parameters.extend(generate_value(
             llm,
@@ -448,8 +465,7 @@ def constrained_decoding(
         llm: Small_LLM_Model,
         brainwash: str,
         allowed_functions: list[Function],
-        prompt: str
-    ) -> dict[str, object]:
+        prompt: str) -> dict[str, object]:
     """Translate one prompt into a structured function call.
 
     Args:
@@ -468,14 +484,14 @@ def constrained_decoding(
 
     # adding brainwash as system message:
     serialized_prompt: t_token_ids = format_token_ids_mssg([{
-        "role": Roles.SYSTEM.ids(),
+        "role": ROLE_IDS["system"],
         "content": llm.encode(brainwash)[0].tolist()}])
 
     # adding user message
     user_token_ids = format_token_ids_mssg(
         [
             {
-                "role": Roles.USER.ids(),
+                "role": ROLE_IDS["user"],
                 "content": llm.encode(prompt)[0].tolist()
             }
         ]
@@ -498,6 +514,7 @@ def constrained_decoding(
         func.name: llm.encode(json.dumps(func.name)[1:-1])[0].tolist()
         for func in allowed_functions
     }
+    visualization.show("Step", "Choosing a function")
     generated_fn_name: t_token_ids = generate_function_name(
         llm,
         serialized_prompt,
@@ -508,6 +525,7 @@ def constrained_decoding(
         func for func in allowed_functions
         if allowed_func_names_token_ids[func.name] == generated_fn_name
     )
+    visualization.show("Function", selected_function.name)
 
     # appending the parameters prefix
     serialized_prompt.extend(llm.encode('", "parameters": ')[0].tolist())
@@ -523,13 +541,17 @@ def constrained_decoding(
     # closing the JSON object
     serialized_prompt.extend(llm.encode("}")[0].tolist())
 
-    return json.loads(llm.decode(serialized_prompt[output_start:]))
+    result: dict[str, object] = json.loads(
+        llm.decode(serialized_prompt[output_start:])
+    )
+    return result
 
 
 def main() -> None:
     """Load inputs, generate function calls, and save one JSON array.
 
-    Calls are also printed to standard output as they are generated.
+    Calls are also printed to standard output. Identical prompts reuse their
+    earlier result within this run.
 
     Raises:
         SystemExit: Arguments or input files are invalid.
@@ -538,6 +560,7 @@ def main() -> None:
     """
     # loading command line arguments
     args = init_arg_parser()
+    visualization.enabled = args.visualize
 
     try:
         brainwash = load_file("brainwash.txt")
@@ -554,27 +577,43 @@ def main() -> None:
 
     # loading input functions
     try:
-        input_functions: list[Function] = load_functions(args.functions_definition)
+        input_functions = load_functions(args.functions_definition)
     except Exception as e:
         write_error("Error", f"Failed to load input functions: {e}")
         sys.exit(1)
 
     # adding functions to the brainwash
-    for func in input_functions:
-        brainwash += "\n" + func.dump_json() + "\n"
+    for function in input_functions:
+        brainwash += "\n" + function.dump_json() + "\n"
 
-    llm = Small_LLM_Model()
+    llm: Small_LLM_Model | None = None
     generated_results: list[dict[str, object]] = []
+    prompt_cache: dict[str, dict[str, object]] = {}
     output_file = Path(args.output)
 
     for p in input_prompts:
-        func = constrained_decoding(llm, brainwash, input_functions, p.prompt)
+        visualization.show("Prompt", p.prompt)
+        # Generate once per exact prompt, then reuse the saved result.
+        if p.prompt not in prompt_cache:
+            if llm is None:
+                llm = Small_LLM_Model()
+            prompt_cache[p.prompt] = constrained_decoding(
+                llm, brainwash, input_functions, p.prompt,
+            )
+        else:
+            visualization.show("Cache", "Reusing the saved result")
+        func = prompt_cache[p.prompt]
         generated_results.append(func)
-        print(json.dumps(func, ensure_ascii=False), flush=True)
+        visualization.show("Done", "Function call ready")
+        if not args.visualize:
+            print(json.dumps(func, ensure_ascii=False), flush=True)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(generated_results, f, indent=4, ensure_ascii=False, allow_nan=False)
+        json.dump(
+            generated_results, f, indent=4,
+            ensure_ascii=False, allow_nan=False,
+        )
 
 
 if __name__ == "__main__":

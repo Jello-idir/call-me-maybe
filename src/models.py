@@ -1,22 +1,21 @@
-"""Input schemas and Qwen chat-token definitions."""
+"""Input schemas and Qwen chat-token definitions used by the decoder."""
 
-from pydantic import BaseModel, ConfigDict
-from typing import TypedDict, Literal
-from enum import Enum
-import json
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 
 t_token_ids = list[int]
 
 
-class ChatTokenIds(TypedDict):
-    """Describe a message whose role and content are already tokenized.
+class ChatTokenIds(BaseModel):
+    """Validate a message whose role and content are already tokenized.
 
     Attributes:
         role: Token IDs identifying the message's role.
         content: Token IDs containing the message body.
     """
 
+    model_config = ConfigDict(extra="forbid", strict=True)
     role: t_token_ids
     content: t_token_ids
 
@@ -42,7 +41,8 @@ class Function(BaseModel):
         returns: Type of the function's return value.
     """
 
-    name: str
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1)
     description: str
     parameters: dict[str, FnType]
     returns: FnType
@@ -51,9 +51,9 @@ class Function(BaseModel):
         """Serialize the definition for inclusion in the system prompt.
 
         Returns:
-            The function definition as indented JSON text.
+            The function definition as compact JSON text.
         """
-        return json.dumps(self.model_dump(), indent=4)
+        return self.model_dump_json()
 
 
 class Prompt(BaseModel):
@@ -67,36 +67,18 @@ class Prompt(BaseModel):
     prompt: str
 
 
-class Roles(Enum):
-    """Store Qwen token IDs for system, user, and assistant roles."""
+# Qwen3 token constants do not need classes or validation.
+ROLE_IDS: dict[str, t_token_ids] = {
+    "system": [8948],
+    "user": [872],
+    "assistant": [77091],
+}
 
-    SYSTEM = 8948
-    USER = 872
-    ASSISTANT = 77091
-
-    def ids(self) -> t_token_ids:
-        """Wrap the role token ID in a list.
-
-        Returns:
-            A one-element list containing this role's token ID.
-        """
-        return [self.value]
-
-
-class ControlToken(Enum):
-    """Store Qwen message, thinking, and newline token IDs."""
-
-    START = 151644
-    END = 151645
-    THINK = 151667
-    END_THINK = 151668
-    NL = 198
-    DOUBLE_NL = 271
-
-    def ids(self) -> t_token_ids:
-        """Wrap the control token ID in a list.
-
-        Returns:
-            A one-element list containing this control token's ID.
-        """
-        return [self.value]
+CONTROL_IDS: dict[str, t_token_ids] = {
+    "start": [151644],
+    "end": [151645],
+    "think": [151667],
+    "end_think": [151668],
+    "newline": [198],
+    "double_newline": [271],
+}
