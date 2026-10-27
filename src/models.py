@@ -24,11 +24,11 @@ class FnType(BaseModel):
     """Validate a supported parameter or return type.
 
     Attributes:
-        type: Supported scalar: string, number, integer, float, or boolean.
+        type: Supported scalar: string, number, integer, or boolean.
     """
 
     model_config = ConfigDict(extra="forbid")
-    type: Literal["string", "number", "integer", "float", "boolean"]
+    type: Literal["string", "number", "integer", "boolean"]
 
 
 class Function(BaseModel):

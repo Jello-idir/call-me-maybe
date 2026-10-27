@@ -29,7 +29,7 @@ uv run python -m src \
 Example result for “What is the sum of 2 and 3?”:
 
 ```json
-{"prompt": "What is the sum of 2 and 3?", "name": "fn_add_numbers", "parameters": {"a": 2, "b": 3}}
+{"prompt": "What is the sum of 2 and 3?", "name": "fn_add_numbers", "parameters": {"a": 2.0, "b": 3.0}}
 ```
 
 Results are saved as one JSON array. Keep generated output out of Git.
@@ -120,19 +120,23 @@ and `--visualize` argument, then delete `src/visualization.py`. The cache's
 ## Design decisions
 
 Use the SDK's public methods, Python's JSON parser, and explicit JSON structure.
-Supported types are `string`, `number`, `integer`, `float`, and `boolean`.
-Numbers and floats must be finite. Generation ends at a valid separator,
-with no fixed token limit.
+Supported types are `string`, `number`, `integer`, and `boolean`.
+The numeric types follow the moulinette's function-definition mapping:
 
-Use `"type": "integer"` in a parameter or return definition for integers.
-Integer arguments are generated as values such as `0`, `42`, or `-7`.
-Decimal points, exponent notation, quoted numbers, and booleans are rejected
-for this type. `"number"` continues to accept both integers and decimals.
+- `"integer"` produces Python integers, such as `12`, `0`, or `-7`.
+- `"number"` produces finite Python floats, such as `12.0`, `0.0`, or `-2.5`.
 
-The subject uses `"number"` for decimal values. As an additional supported
-label, `"type": "float"` requires a decimal point or exponent, such as `3.0`,
-`-2.5`, or `1e2`. Bare integers, booleans, quoted numbers, `NaN`, and infinity
-are rejected for this type. It works in parameter and return definitions.
+This distinction applies even when a `number` argument has a whole-number
+value: the evaluator checks its Python type when calling the function.
+Both types work in parameter and return definitions. Booleans and quoted
+numbers are rejected as numeric arguments.
+
+The decoder enforces this while selecting tokens. An integer cannot finish
+with a decimal point or exponent; a number must include one. Temporary
+validation endings let a prefix like `12` continue toward `12.0`, but never
+change the actual output. The unused `"float"` type label has been removed;
+decimal values use `"number"`. Generation ends at a valid separator, with no
+fixed token limit.
 
 All application data classes use Pydantic for validation. Token constants are
 plain dictionaries. Empty function lists, duplicate function names, unsupported
@@ -162,10 +166,10 @@ Integer support was also checked with negative, zero, and large values,
 including rejection of decimals and booleans. Two real-model prompts using
 integer definitions produced the expected integer arguments.
 
-Float checks cover unfinished prefixes, decimal and exponent notation,
-negative zero, and rejection of wrong types and non-finite values. Two
-real-model prompts produced the expected float arguments, including `2.0`
-and `0.0` for whole-number inputs declared as floats.
+Numeric checks cover unfinished prefixes, decimal and exponent notation,
+negative zero, and rejection of wrong types and non-finite values. Additional
+checks use the moulinette's real functions to verify that `integer` arguments
+stay integers and `number` arguments are floats, including mixed arguments.
 
 The caching demo was checked with the local Qwen3-0.6B model: three output
 entries, two generation calls, correct arguments, and matching repeated results.
@@ -177,8 +181,9 @@ are escaped.
 
 Run `make lint` for the required flake8 and mypy checks, or `make lint-strict`
 for stricter typing. The configuration checks the application and excludes the
-supplied third-party SDK. Mypy uses `typings/llm_sdk/__init__.pyi` for the SDK's
-public API, avoiding a duplicate-module error from its source and stub.
+supplied third-party SDK and the local moulinette. Mypy uses
+`typings/llm_sdk/__init__.pyi` for the SDK's public API, avoiding a
+duplicate-module error from its source and stub.
 
 For a manual check, run `make run`, compare the selected functions and arguments
 with the input prompts, and verify that the output parses:
@@ -187,20 +192,45 @@ with the input prompts, and verify that the output parses:
 uv run python -m json.tool data/output/function_calls.json
 ```
 
+If you have the separately provided `moulinette/` folder, run its evaluator
+from the project root with:
+
+```bash
+uv run --directory moulinette python -m moulinette prepare_exercises \
+  --output data_public --set public
+uv run python -m src \
+  --functions_definition moulinette/data_public/input/functions_definition.json \
+  --input moulinette/data_public/input/function_calling_tests.json \
+  --output data/output/public_calls.json
+uv run --directory moulinette python -m moulinette grade_student_answers \
+  --student_answer_path ../data/output/public_calls.json --set public
+```
+
+Replace `public` with `private` throughout to run the other set. The evaluator
+and its data stay local: `/moulinette/` is ignored by Git and excluded from
+application linting. The program itself does not import or depend on it.
+
 ## Performance analysis
 
-The final check processed the 11 supplied prompts in 149 seconds on the local
-CPU with default thread settings and an already-cached Qwen3-0.6B model.
-All 11 results were valid JSON with the required keys and parameter types.
-Function selection was correct for all 11; complete argument extraction was
-correct for 10 of 11 (90.9%), meeting the subject's stated accuracy and runtime
-targets on this sample.
+The latest runs used the supplied moulinette's unmodified grader and exercise
+definitions, on the local CPU with default thread settings and a cached
+Qwen3-0.6B model. Times include loading the model for each run.
 
-Known limitation: the vowel-replacement request produced `"regex": "aeiou"`
-and `"replacement": " *"`, which do not perform the requested replacement.
-Constrained decoding guarantees syntax and types, not the meaning of a regex
-or the correctness of extracted arguments. Accuracy on unseen prompts and
-function sets, and runtime on other hardware, may differ.
+| Set | Grader score | Runtime |
+| --- | --- | --- |
+| Public | 10/11 (90.9%) | 281 seconds |
+| Private | 10/11 (90.9%) | 217 seconds |
+
+Both sets meet the stated accuracy and five-minute targets in these runs.
+All 22 calls have valid JSON, the required parameter keys, and the exact
+Python argument types expected by the evaluator. All numeric tests pass.
+
+Two semantic errors remain: the public vowel-replacement request uses
+`"regex": "aeiou"` and `"replacement": " *"`; one private SQL request uses
+`"database": "system database"` instead of `"system"`. Constrained decoding
+enforces syntax and types, not the meaning of a regex or the correctness of
+extracted text. Accuracy on unseen prompts and function sets, and runtime on
+other hardware, may differ.
 
 Skipping model calls for forced tokens and using compact definitions reduce
 runtime. Prompt caching saves additional work when requests repeat. The SDK
@@ -215,5 +245,5 @@ more time. All 17 temporary checks, flake8, and strict mypy passed.
 
 AI assistance was used to **HELP** in constrained decoding, JSON validation,
 prompt caching, and was used to **DO** this README, docstrings, generation
-visualization, integer and float support, automated checks, the models file
-move, and submission fixes.
+visualization, numeric type support, automated checks, the models file move,
+and submission fixes.

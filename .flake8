@@ -1,2 +1,2 @@
 [flake8]
-extend-exclude = .venv,llm_sdk
+extend-exclude = .venv,llm_sdk,moulinette

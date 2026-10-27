@@ -313,15 +313,15 @@ def valid_value_prefix(
 
     Args:
         text: Candidate value text without its separator.
-        value_type: Expected type: string, number, integer, float, or boolean.
+        value_type: Expected type: string, number, integer, or boolean.
         complete: Whether the value must already be complete.
 
     Returns:
         Whether the text passes the expected type and JSON syntax checks.
     """
     expected_types = {
-        "string": (str,), "number": (int, float),
-        "integer": (int,), "float": (float,), "boolean": (bool,),
+        "string": (str,), "number": (float,),
+        "integer": (int,), "boolean": (bool,),
     }
     ending_possibilities = [""]
     if not complete:
@@ -331,9 +331,10 @@ def valid_value_prefix(
             if any(word.startswith(text.lstrip(" \t\r\n"))
                    for word in ("true", "false")):
                 return True
-        elif value_type in ("number", "integer", "float"):
+        elif value_type in ("number", "integer"):
             ending_possibilities += ["0"]
-            if value_type == "float":
+            if value_type == "number":
+                # "12" and "-" can still become "12.0" and "-0.0".
                 ending_possibilities += [".0", "0.0"]
         elif value_type == "string":
             ending_possibilities += ['"', '\\"', '0"', '00"', '000"', '0000"']
@@ -343,8 +344,7 @@ def valid_value_prefix(
             value = json.loads(text + ending)
             if type(value) not in expected_types[value_type]:
                 continue
-            if (value_type in ("number", "float")
-                    and not np.isfinite(float(value))):
+            if value_type == "number" and not np.isfinite(float(value)):
                 continue
             if value_type == "string" and not ending:
                 value.encode("utf-8")
@@ -367,7 +367,7 @@ def generate_value(
     Args:
         llm: SDK model supplying encoding, decoding, and token scores.
         serialized_prompt: Context ending immediately before the value.
-        value_type: Expected type: string, number, integer, float, or boolean.
+        value_type: Expected type: string, number, integer, or boolean.
         delimiter: Comma for another parameter, or brace for the final one.
 
     Returns:
@@ -377,7 +377,7 @@ def generate_value(
         ValueError: The type or separator is unsupported, or no valid next
             token has a finite score.
     """
-    if value_type not in ("string", "number", "integer", "float", "boolean"):
+    if value_type not in ("string", "number", "integer", "boolean"):
         raise ValueError("Unsupported value type")
     if delimiter not in (",", "}"):
         raise ValueError("Unsupported value type or delimiter")

@@ -15,5 +15,5 @@ llm-sdk = { path = "./llm_sdk"}
 [tool.mypy]
 explicit_package_bases = true
 mypy_path = "typings"
-exclude = ["^llm_sdk/", "^typings/"]
+exclude = ["^llm_sdk/", "^typings/", "^moulinette/"]
 
